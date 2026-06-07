@@ -1,108 +1,194 @@
-# Sports FAQ Question Answering with Elasticsearch Recall and BERT Semantic Re-ranking
+# Sports-QA-BERT
 
-This repository is a cleaned version of an undergraduate thesis project on retrieval-based sports knowledge question answering.
+基于 Elasticsearch 与 BERT 的体育知识问答匹配研究
 
-The system uses Elasticsearch for first-stage FAQ candidate recall, then applies a fine-tuned BERT sentence-pair classifier for semantic matching and candidate re-ranking.
+## 项目简介
 
-## Highlights
+本项目围绕体育知识问答场景，研究如何将用户提出的自然语言问题匹配到标准问题，并返回对应的标准答案。
 
-- Built a sports FAQ QA system over a sports question-answer knowledge base.
-- Used Elasticsearch with Chinese tokenization for candidate question recall.
-- Fine-tuned BERT on a Chinese sentence-pair similarity task because the sports FAQ data did not contain enough labeled similar-question pairs.
-- Applied the fine-tuned BERT model to score query-candidate question pairs and re-rank ES results.
-- Compared BERT with ARC-I and Match-LSTM using NDCG@3, NDCG@5, mAP, and runtime.
+项目采用“两阶段问答匹配”方案：
 
-## Architecture
+1. 使用 Elasticsearch 对体育知识标准问题库进行初步召回；
+2. 使用 BERT 对用户问题与候选标准问题进行语义匹配与重排序。
 
-```text
-User question
-    |
-    v
-Elasticsearch recall
-    |
-    v
-Top-k candidate FAQ questions
-    |
-    v
-Fine-tuned BERT semantic matching
-    |
-    v
-Re-ranked answer
-```
+通过该流程，系统可以先利用倒排索引快速召回候选结果，再利用深度学习模型进一步判断语义相似度，从而提高体育知识问答系统的匹配准确性。
 
-## Repository Structure
+## 研究背景
 
-```text
-es_recall/
-  build_qa_database.py   # Build Elasticsearch FAQ index
-  sport_qa.py            # Retrieve candidate questions from ES
+随着信息技术的发展和大众体育参与意识的提高，人们对体育知识的需求不断增加。传统搜索引擎通常返回大量相关网页或文档，用户仍然需要自行筛选信息；而 FAQ 问答系统可以直接返回较为简洁、明确的答案，能够降低用户获取体育知识的时间成本。
 
-bert_rerank/
-  run_similarity.py      # BERT sentence-pair scoring and reranking
-  bert_model/            # BERT modeling/tokenization/optimization code
+在体育知识问答场景中，用户的提问方式往往具有多样性。相同含义的问题可能有不同表达，仅依赖关键词匹配容易受到表达差异影响。因此，本项目尝试结合检索方法与深度语义匹配模型，提升系统对用户问题的理解能力。
 
-model_comparison/
-  arci.py                # ARC-I comparison experiment
-  matchlstm.py           # Match-LSTM comparison experiment
-  chinese_bert.py        # BERT comparison experiment
+## 数据集构建
 
-third_party/
-  mzcn/                  # Chinese MatchZoo fork used by comparison scripts
+本项目使用中文自然语言处理语料库中的两个问答数据集构建体育知识问答对数据：
 
-sample_data/
-  sports_qa_sample.jsonl
-  sentence_pair_sample.csv
+* 百科问答数据集 baike2018qa；
+* 社区问答数据集 webtext2019zh。
 
-docs/
-  project_summary.md
-```
+其中：
 
-## Task Definition
+* 从 baike2018qa 中筛选 category 字段为“体育”的数据，得到 20965 条数据；
+* 从 webtext2019zh 中使用“体育”作为关键词进行筛选，得到 10109 条数据；
+* 将原始 JSON 数据转换为 ndJSON 格式后进行统一整理；
+* 最终构建得到 31074 条体育知识问答对数据。
 
-The BERT component is not a generative QA model. It is a semantic matching model.
+每条问答数据主要包含：
 
-Input:
+* 标准问题 question；
+* 问题类别 category；
+* 标准答案 answer。
+
+## 系统流程
+
+项目整体流程如下：
 
 ```text
-sentence1, sentence2, label
+用户输入问题
+    ↓
+Elasticsearch 倒排索引召回
+    ↓
+返回 Top 5 候选标准问题
+    ↓
+BERT 计算用户问题与候选问题的语义相似度
+    ↓
+根据相似度进行重排序
+    ↓
+返回最相关标准问题对应的答案
 ```
 
-Where:
+如果所有候选问题与用户输入问题的相似度均低于设定阈值，系统会返回未找到合适答案的提示。
 
-- `sentence1`: user question
-- `sentence2`: candidate standard FAQ question
-- `label = 1`: semantically similar
-- `label = 0`: not similar
+## 技术实现
 
-The model outputs a probability for semantic equivalence. During QA inference, Elasticsearch first recalls candidates, then BERT re-ranks them by semantic similarity.
+### 1. Elasticsearch 初步召回
 
-## Why Fine-tune BERT?
+本项目使用 Elasticsearch 构建体育知识问答库，并基于倒排索引实现标准问题的初步召回。
 
-The sports FAQ dataset mainly contains question-answer pairs, not large-scale labeled similar-question pairs. Therefore, BERT was fine-tuned on a Chinese sentence-pair similarity dataset and transferred to the sports FAQ scenario for semantic matching.
+主要工作包括：
 
-The fine-tuning objective teaches BERT to distinguish whether two Chinese questions express the same intent, while the sports knowledge itself remains in the FAQ database.
+* 安装并配置 Elasticsearch、Kibana 和 elasticsearch-head；
+* 使用 RESTful API 与 Elasticsearch 进行通信；
+* 创建体育问答索引；
+* 设置 question、category、answer 等字段；
+* 使用 bulk 批量导入体育问答对数据；
+* 根据用户输入的 query 检索相关标准问题；
+* 返回得分最高的若干条候选结果。
 
-## Experimental Results
+Elasticsearch 可以快速完成粗粒度检索，为后续 BERT 重排序提供候选标准问题。
 
-In the thesis experiments, BERT outperformed ARC-I and Match-LSTM on ranking metrics, with higher NDCG and mAP. The trade-off was significantly higher runtime.
+### 2. IK 中文分词
 
-Representative results:
+由于 Elasticsearch 默认分词器对中文文本支持有限，本项目使用 IK 中文分词器进行中文分词。
 
-| Model | NDCG@3 | NDCG@5 | mAP | Runtime |
-|---|---:|---:|---:|---:|
-| ARC-I | ~0.4963 | ~0.4965 | ~0.4940 | 21.86s |
-| Match-LSTM | ~0.4831 | ~0.4832 | ~0.4794 | 33.05s |
-| BERT | ~0.5091 | ~0.5094 | ~0.5066 | 5489.17s |
+项目中涉及两种分词模式：
 
-## Notes
+* `ik_max_word`：对文本进行更细粒度的切分；
+* `ik_smart`：对文本进行更粗粒度的切分。
 
-Large artifacts are intentionally excluded from this repository:
+同时，为减少无意义词对检索结果的影响，项目中加入了中文常用停用词表，对部分非实意词进行过滤。
 
-- BERT checkpoints
-- pre-trained BERT weights
-- full sports QA data
-- full CCKS similarity data
-- TensorBoard logs
+### 3. BERT 语义重排序
 
-See `sample_data/` for small format examples.
+在 Elasticsearch 返回候选标准问题后，本项目使用 BERT 对用户问题和候选标准问题进行语义匹配。
 
+处理方式如下：
+
+1. 将用户问题与候选标准问题组成句子对；
+2. 使用 BERT 对句子对进行编码；
+3. 计算两句话之间的语义相似度；
+4. 根据相似度对候选标准问题重新排序；
+5. 返回相似度最高的标准问题对应答案。
+
+BERT 模型在文本匹配任务中可以更好地捕捉句子之间的语义关系，从而弥补单纯关键词检索在语义理解方面的不足。
+
+## 实验设计
+
+为了验证 BERT 在体育知识问答匹配任务中的效果，本项目将 BERT 与两种深度学习文本匹配模型进行了对比：
+
+* ARC-I：基于卷积神经网络 CNN 的文本匹配模型；
+* Match-LSTM：基于长短期记忆网络 LSTM 的文本匹配模型；
+* BERT：基于 Transformer 的预训练语言模型。
+
+实验使用的评估指标包括：
+
+* NDCG@3；
+* NDCG@5；
+* 平均精度；
+* 运行时间。
+
+其中，NDCG 用于衡量排序质量，平均精度用于衡量模型整体匹配效果，运行时间用于比较不同模型的效率。
+
+## 实验结果
+
+实验结果显示，BERT 在排序质量和平均精度方面均优于 ARC-I 和 Match-LSTM。
+
+第 10 次迭代时，不同模型的部分结果如下：
+
+| 模型         | NDCG@3 | NDCG@5 |   平均精度 |
+| ---------- | -----: | -----: | -----: |
+| ARC-I      | 0.4963 | 0.4965 | 0.4940 |
+| Match-LSTM | 0.4831 | 0.4832 | 0.4794 |
+| BERT       | 0.5091 | 0.5094 | 0.5066 |
+
+与 ARC-I 相比，BERT 的 NDCG@3 和 NDCG@5 分别提升约 1.28% 和 1.29%。
+
+与 Match-LSTM 相比，BERT 的 NDCG@3 和 NDCG@5 分别提升约 2.60% 和 2.62%。
+
+不过，BERT 的运行时间明显更长。实验中三种模型的运行时间如下：
+
+| 模型         | 运行时间 / 秒 |
+| ---------- | -------: |
+| ARC-I      |    21.86 |
+| Match-LSTM |    33.05 |
+| BERT       |  5489.17 |
+
+这说明 BERT 在语义匹配效果上具有优势，但也存在模型复杂度高、运行时间长的问题。
+
+## 我的主要工作
+
+* 收集并整理体育知识问答对数据；
+* 从多个中文问答数据集中筛选体育相关数据；
+* 将 JSON 格式数据转换为 ndJSON 格式；
+* 使用 Elasticsearch 构建体育知识问答索引；
+* 配置 IK 中文分词器和停用词表；
+* 实现基于倒排索引的标准问题召回；
+* 使用 BERT 完成用户问题与候选标准问题的语义匹配；
+* 对召回结果进行重排序；
+* 对比 ARC-I、Match-LSTM 和 BERT 在文本匹配任务中的表现；
+* 使用 NDCG、平均精度和运行时间进行实验分析。
+
+## 项目亮点
+
+* 构建了 31074 条体育知识问答对数据；
+* 采用“检索召回 + 语义重排序”的两阶段问答匹配方案；
+* 使用 Elasticsearch 提高候选问题召回效率；
+* 使用 IK 中文分词器优化中文问答检索效果；
+* 使用 BERT 提升用户问题与标准问题之间的语义匹配能力；
+* 进行了多模型对比实验，而不是只展示单一模型结果；
+* 分析了模型效果与运行效率之间的取舍。
+
+## 不足与改进方向
+
+本项目仍存在一些可以进一步优化的方向：
+
+1. 数据规模仍然有限，后续可以通过爬虫、问答生成等方式扩充体育领域问答数据；
+2. BERT 微调数据并非体育领域专用数据，后续可以构建体育领域文本匹配数据集进行微调；
+3. 对比模型数量较少，后续可以加入 RoBERTa、ERNIE 等预训练模型进行进一步实验；
+4. BERT 运行时间较长，后续可以尝试模型蒸馏、向量召回或轻量化模型优化推理效率；
+5. 当前系统主要关注标准问题匹配，后续可以探索结合知识图谱或 RAG 的体育知识问答系统。
+
+## 项目定位
+
+本项目是一个面向体育知识问答场景的自然语言处理项目，覆盖了数据构建、检索召回、语义匹配、模型对比和实验分析等完整流程。
+
+它帮助我理解了问答系统中的两个核心问题：
+
+1. 如何从大规模问题库中快速召回候选答案；
+2. 如何从候选结果中选出语义上最匹配的答案。
+
+该项目也为后续学习语义检索、RAG、文本匹配和智能问答系统打下了基础。
+
+## License
+
+This project is licensed under the MIT License.
