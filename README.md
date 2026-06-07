@@ -94,7 +94,7 @@ D:\pythonProject\ES_baesd_QA_sport\data
 }
 ```
 
-需要说明的是：这份体育数据是 **QA 知识库**，不是人工标注的 reranking benchmark。它没有 `query, candidate_question, relevance_label` 这种相关性标注。
+这份体育数据主要作为 FAQ 知识库使用，提供标准问题与对应答案。
 
 ## Elasticsearch 候选召回
 
@@ -140,19 +140,11 @@ similarity = P(label = 1 | user_question, candidate_question)
 
 系统选择相似度最高的候选问题，并返回该 FAQ 对应的答案。如果最高分低于阈值，则返回没有合适答案。
 
-## BERT 微调边界
+## BERT 微调与迁移
 
 体育 FAQ 数据主要是 question-answer pair，缺少大规模“相似问题 / 不相似问题”的标注。因此，BERT 不是直接用体育 QA 数据监督微调的，而是使用外部中文语义匹配数据完成句对二分类微调，再迁移到体育 FAQ 场景中作为 reranker。
 
-安全表述：
-
-> BERT 被微调用于中文句对语义匹配，并作为 Elasticsearch 体育 FAQ 候选召回结果的语义重排序模块。
-
-不建议夸大为：
-
-> BERT 在人工标注的体育 Top-5 reranking benchmark 上严格证明优于 ARC-I。
-
-当前代码中没有发现完整的体育人工标注 reranking benchmark。
+微调目标是让模型学习中文问题之间的语义匹配能力，而体育领域知识仍然来自 FAQ 知识库本身。
 
 ## 模型对比实验
 
@@ -177,23 +169,7 @@ similarity = P(label = 1 | user_question, candidate_question)
 | Match-LSTM | 0.4831 | 0.4832 | 0.4794 | 33.05s |
 | BERT | 0.5091 | 0.5094 | 0.5066 | 5489.17s |
 
-代码反查显示，模型对比脚本使用的是带 label 的中文语义匹配数据来计算排序指标。体育 FAQ 的 `test1.csv` 样本没有 relevance label，因此这部分实验应表述为“中文语义匹配/排序实验”，不要表述为“严格的体育 Top-5 reranking 评测”。
-
-## 简历安全表述
-
-推荐中文表述：
-
-> 构建基于 Elasticsearch + BERT 的体育 FAQ 问答系统：从中文 QA 语料中筛选、清洗并整理 3.1 万条体育领域 FAQ 知识库，使用 Elasticsearch 实现 Top-K 候选召回，并基于微调 BERT 的句对匹配概率对候选问题进行语义重排序；对比 ARC-I、Match-LSTM 与 BERT 在语义匹配排序任务上的 NDCG/mAP 表现。
-
-英文表述：
-
-> Built a sports FAQ QA prototype with a 31K-record domain QA knowledge base, Elasticsearch Top-K candidate recall, and fine-tuned BERT sentence-pair reranking; compared ARC-I, Match-LSTM, and BERT on semantic matching metrics including NDCG and mAP.
-
-谨慎避免：
-
-- 不要说体育 FAQ 数据是人工标注的 reranking benchmark。
-- 不要说 BERT 在体育 Top-5 重排序上比 ARC-I 定量提升了 X%。
-- 不要把系统描述成生成式 QA 或 RAG。
+模型对比实验用于分析不同文本匹配模型在语义匹配排序任务中的效果与运行效率差异。
 
 ## 仓库说明
 
@@ -211,4 +187,3 @@ similarity = P(label = 1 | user_question, candidate_question)
 ## License
 
 MIT License.
-
