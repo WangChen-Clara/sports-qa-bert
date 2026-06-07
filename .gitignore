@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+.idea/
+
+# Large model artifacts
+*.ckpt
+*.ckpt-*
+*.bin
+*.pt
+*.tf_record
+events.out.tfevents.*
+graph.pbtxt
+
+# Large/raw datasets and archives
+data/
+*.zip
+*.rar
+*.tgz
+
+# Local outputs
+outputs/
+results/
+save/
+responses.json
+sentence1.txt
+

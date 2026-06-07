@@ -1,0 +1,8 @@
+elasticsearch
+pandas
+numpy
+tensorflow==1.15.0
+torch
+tqdm
+nltk
+
